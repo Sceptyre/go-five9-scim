@@ -123,17 +123,18 @@ func NewFive9UserInfo() *Five9UserInfo {
 
 // Sub Data Types
 type Five9UserGeneralInfo struct {
-	Id                int    `xml:"id"`
-	Active            bool   `xml:"active"`
-	CanChangePassword bool   `xml:"canChangePassword"`
-	Email             string `xml:"EMail"`
+	Id                 int    `xml:"id"`
+	Active             bool   `xml:"active"`
+	CanChangePassword  bool   `xml:"canChangePassword"`
+	MustChangePassword bool   `xml:"mustChangePassword"`
+	Email              string `xml:"EMail"`
 	// Extension         int    `xml:"extension"`
 	FederationId    string `xml:"federationId"`
 	UserName        string `xml:"userName"`
 	FirstName       string `xml:"firstName"`
 	LastName        string `xml:"lastName"`
 	FullName        string `xml:"fullName"`
-	Password        string `xml:"password"`
+	Password        string `xml:"password,omitempty"`
 	MediaTypeConfig struct {
 		MediaTypes []Five9UserMediaTypeConfig `xml:"mediaTypes"`
 	} `xml:"mediaTypeConfig,omitempty"`

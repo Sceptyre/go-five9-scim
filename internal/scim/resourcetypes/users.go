@@ -1,8 +1,6 @@
 package resourcetypes
 
 import (
-	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/Sceptyre/go-five9-scim/internal/mappers"
@@ -12,6 +10,7 @@ import (
 	five9_api "github.com/Sceptyre/go-five9-scim/pkg/five9/api"
 
 	"github.com/elimity-com/scim"
+	scim_errors "github.com/elimity-com/scim/errors"
 	"github.com/elimity-com/scim/schema"
 )
 
@@ -19,28 +18,50 @@ import (
 type userResourceHandler struct{}
 
 func (urh *userResourceHandler) Create(r *http.Request, attributes scim.ResourceAttributes) (scim.Resource, error) {
+	// Map data to VCC userInfo object
 	userInfo := mappers.MapScimAttributesToFive9UserInfo(&attributes)
-	fmt.Println(userInfo)
+	userInfo.GeneralInfo.Id = 1
 
-	return scim.Resource{}, nil
+	// Post to VCC API
+	createUserRes, createUserErr := five9_api.CreateUser(userInfo)
+	if createUserErr != nil {
+		return scim.Resource{}, scim_errors.ScimError{
+			Detail: createUserErr.Body.Error.Message,
+			Status: 500,
+		}
+	}
+
+	// Map response userInfo to a scim resource
+	scimUser := mappers.MapFive9UserInfoToScimUser(createUserRes.Return)
+
+	// Update sync data
+	sync.SyncIdsToUsernames[scimUser.ID] = createUserRes.Return.GeneralInfo.UserName
+	sync.SyncData[scimUser.ID] = *scimUser
+
+	return *scimUser, nil
 }
+
 func (urh *userResourceHandler) Get(r *http.Request, id string) (scim.Resource, error) {
 	// Get username value for ID
 	userName, ok := sync.SyncIdsToUsernames[id]
 	if !ok {
-		return scim.Resource{}, ErrResourceNotFound
+		return scim.Resource{}, scim_errors.ScimErrorResourceNotFound(id)
 	}
 
 	// Get live user info
 	userInfoRes, getUserInfoErr := five9_api.GetUserInfo(userName)
 	if getUserInfoErr != nil {
-		return scim.Resource{}, errors.New(getUserInfoErr.Body.Error.Message)
+		return scim.Resource{}, scim_errors.ScimError{
+			Detail: getUserInfoErr.Body.Error.Message,
+			Status: 500,
+		}
 	}
 
 	scimUser := mappers.MapFive9UserInfoToScimUser(userInfoRes.Return)
 
 	return *scimUser, nil
 }
+
 func (urh *userResourceHandler) GetAll(r *http.Request, params scim.ListRequestParams) (scim.Page, error) {
 	// Get all resources
 	filteredUsers := sync.GetMapValues[scim.Resource](sync.SyncData)
@@ -70,46 +91,61 @@ func (urh *userResourceHandler) GetAll(r *http.Request, params scim.ListRequestP
 		TotalResults: totalResults,
 	}, nil
 }
+
 func (urh *userResourceHandler) Replace(r *http.Request, id string, attributes scim.ResourceAttributes) (scim.Resource, error) {
 	// Get username value for ID
 	userName, ok := sync.SyncIdsToUsernames[id]
 	if !ok {
-		return scim.Resource{}, ErrResourceNotFound
+		return scim.Resource{}, scim_errors.ScimErrorResourceNotFound(id)
 	}
 
 	// Get live user info
 	userInfoRes, getUserInfoErr := five9_api.GetUserInfo(userName)
 	if getUserInfoErr != nil {
-		return scim.Resource{}, errors.New(getUserInfoErr.Body.Error.Message)
+		return scim.Resource{}, scim_errors.ScimError{
+			Detail: getUserInfoErr.Body.Error.Message,
+			Status: 500,
+		}
 	}
 
 	// Map data accordingly
 	userInfo := mappers.MapScimAttributesToExistingFive9UserInfo(&attributes, &userInfoRes.Return)
-	rolesToRemove := mappers.MapFive9UserInfoToRolesToRemove(userInfo)
+	rolesToRemove := mappers.MapFive9UserInfoToRolesToRemove(&userInfo)
 
 	// Perform update request
 	modifyUserRes, modifyUserErr := five9_api.ModifyUser(userInfo.GeneralInfo, userInfo.Roles, rolesToRemove)
 	if modifyUserErr != nil {
-		return scim.Resource{}, errors.New(modifyUserErr.Body.Error.Message)
+		return scim.Resource{}, scim_errors.ScimError{
+			Detail: modifyUserErr.Body.Error.Message,
+			Status: 500,
+		}
 	}
 
 	// Map response to scim resource
 	scimUser := mappers.MapFive9UserInfoToScimUser(modifyUserRes.Return)
 
+	// Update sync data
+	sync.SyncIdsToUsernames[scimUser.ID] = modifyUserRes.Return.GeneralInfo.UserName
+	sync.SyncData[scimUser.ID] = *scimUser
+
 	// Output scim resource
 	return *scimUser, nil
 }
+
 func (urh *userResourceHandler) Delete(r *http.Request, id string) error {
 	// Get username value for ID
 	userName, ok := sync.SyncIdsToUsernames[id]
 	if !ok {
-		return ErrResourceNotFound
+		return scim_errors.ScimErrorResourceNotFound(id)
 	}
 
 	// Get live user info
 	userInfoRes, getUserInfoErr := five9_api.GetUserInfo(userName)
 	if getUserInfoErr != nil {
-		return errors.New(getUserInfoErr.Body.Error.Message)
+		return scim_errors.ScimError{
+			Detail: getUserInfoErr.Body.Error.Message,
+			Status: 500,
+		}
 	}
 
 	// Map data accordingly
@@ -119,14 +155,24 @@ func (urh *userResourceHandler) Delete(r *http.Request, id string) error {
 	// Perform update request
 	_, modifyUserErr := five9_api.ModifyUser(userInfo.GeneralInfo, userInfo.Roles, []string{})
 	if modifyUserErr != nil {
-		return errors.New(modifyUserErr.Body.Error.Message)
+		return scim_errors.ScimError{
+			Detail: modifyUserErr.Body.Error.Message,
+			Status: 500,
+		}
 	}
+
+	// Update sync data
+	delete(sync.SyncIdsToUsernames, id)
+	delete(sync.SyncData, id)
 
 	// Output scim resource
 	return nil
 }
+
 func (urh *userResourceHandler) Patch(r *http.Request, id string, operations []scim.PatchOperation) (scim.Resource, error) {
-	return scim.Resource{}, errors.New("unsupported method")
+	return scim.Resource{}, scim_errors.ScimErrorBadRequest(
+		"Unsupported Method",
+	)
 }
 
 // Schema for filter and mapped attributes

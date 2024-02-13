@@ -1,6 +1,7 @@
 package mappers
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -75,7 +76,7 @@ func setIfExists[T any](potentialValue interface{}, currentValue T) T {
 	return currentValue
 }
 
-func MapScimAttributesToExistingFive9UserInfo(attributes *scim.ResourceAttributes, userInfo *five9_models.Five9UserInfo) *five9_models.Five9UserInfo {
+func MapScimAttributesToExistingFive9UserInfo(attributes *scim.ResourceAttributes, userInfo *five9_models.Five9UserInfo) five9_models.Five9UserInfo {
 	userInfo.GeneralInfo.Email = setIfExists[string](
 		(*attributes)["email"],
 		userInfo.GeneralInfo.Email,
@@ -103,27 +104,28 @@ func MapScimAttributesToExistingFive9UserInfo(attributes *scim.ResourceAttribute
 		role, perm, _ := strings.Cut(permission.(string), ":")
 		switch strings.ToLower(role) {
 		case "admin":
-			for _, rolePermission := range userInfo.Roles.Admin.Permissions {
+			for i, rolePermission := range userInfo.Roles.Admin.Permissions {
 				if rolePermission.Type == perm {
-					rolePermission.Value = true
+					userInfo.Roles.Admin.Permissions[i].Value = true
 				}
 			}
 		case "agent":
-			for _, rolePermission := range userInfo.Roles.Agent.Permissions {
+			for i, rolePermission := range userInfo.Roles.Agent.Permissions {
 				if rolePermission.Type == perm {
-					rolePermission.Value = true
+					userInfo.Roles.Agent.Permissions[i].Value = true
 				}
 			}
 		case "supervisor":
-			for _, rolePermission := range userInfo.Roles.Supervisor.Permissions {
+			fmt.Printf("%v -> %v, %v\n", permission, strings.ToLower(role), perm)
+			for i, rolePermission := range userInfo.Roles.Supervisor.Permissions {
 				if rolePermission.Type == perm {
-					rolePermission.Value = true
+					userInfo.Roles.Supervisor.Permissions[i].Value = true
 				}
 			}
 		case "reporting":
-			for _, rolePermission := range userInfo.Roles.Reporting.Permissions {
+			for i, rolePermission := range userInfo.Roles.Reporting.Permissions {
 				if rolePermission.Type == perm {
-					rolePermission.Value = true
+					userInfo.Roles.Reporting.Permissions[i].Value = true
 				}
 			}
 		}
@@ -131,10 +133,10 @@ func MapScimAttributesToExistingFive9UserInfo(attributes *scim.ResourceAttribute
 
 	userInfo.GeneralInfo.Password = string(pwgen.RandPW())
 
-	return userInfo
+	return *userInfo
 }
 
-func MapScimAttributesToFive9UserInfo(attributes *scim.ResourceAttributes) *five9_models.Five9UserInfo {
+func MapScimAttributesToFive9UserInfo(attributes *scim.ResourceAttributes) five9_models.Five9UserInfo {
 	userInfo := five9_models.NewFive9UserInfo()
 	userInfo.GeneralInfo.UserName = (*attributes)["userName"].(string)
 
