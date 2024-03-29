@@ -116,7 +116,6 @@ func MapScimAttributesToExistingFive9UserInfo(attributes *scim.ResourceAttribute
 				}
 			}
 		case "supervisor":
-			fmt.Printf("%v -> %v, %v\n", permission, strings.ToLower(role), perm)
 			for i, rolePermission := range userInfo.Roles.Supervisor.Permissions {
 				if rolePermission.Type == perm {
 					userInfo.Roles.Supervisor.Permissions[i].Value = true
